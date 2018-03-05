@@ -41,6 +41,7 @@ class Execution(threading.Thread):
         self.__serial._send_command('MEASUrement:IMMed:TYPe MEAN')
         try:
             while True:
+                start = time()
                 if self.__stop_flag:
                     break
                 self.__count += 1
@@ -57,7 +58,11 @@ class Execution(threading.Thread):
                 self.__excel.write_row_data(n=self.__count, v=v, a=a,
                                             t=TimeFormat.test_timestamp())
                 ConsolePrint.info("等待{time}秒".format(time=self.__sleep_time))
-                sleep(self.__sleep_time)
+                end = time()
+
+                gap = self.__sleep_time - start + end
+                if gap > 0:
+                    sleep(gap)
         except Exception:
             ConsolePrint.traceback()
         finally:
