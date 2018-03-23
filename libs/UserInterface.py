@@ -21,7 +21,7 @@ class RedirectText(object):
 
 class UserInterface(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, -1, title="Charge&Discharge V1.4", size=(480, 400))
+        wx.Frame.__init__(self, None, -1, title="Charge&Discharge V1.5", size=(480, 400))
         self.Center()
         self.panel = wx.Panel(self, -1)
         self.execution_thread = None
@@ -54,13 +54,16 @@ class UserInterface(wx.Frame):
         self.interval_slider.SetValue(10)
         option_box.Add(interval_title, 0, wx.ALIGN_CENTER_VERTICAL)
         option_box.Add(self.interval_slider, 1, wx.EXPAND | wx.LEFT | wx.BOTTOM, 5)
-        button_box = wx.BoxSizer(wx.VERTICAL)
-        start_button = wx.Button(self.panel, -1, 'Start')
+        button_box = wx.BoxSizer(wx.HORIZONTAL)
+        start_button = wx.Button(self.panel, -1, 'Start', size=(50, 50))
         self.Bind(wx.EVT_BUTTON, self.on_start, start_button)
-        stop_button = wx.Button(self.panel, -1, 'Stop')
+        stop_button = wx.Button(self.panel, -1, 'Stop', size=(50, 50))
         self.Bind(wx.EVT_BUTTON, self.on_stop, stop_button)
+        convert_button = wx.Button(self.panel, -1, 'Convert', size=(55, 50))
+        self.Bind(wx.EVT_BUTTON, self.on_convert, convert_button)
         button_box.Add(start_button, 0)
         button_box.Add(stop_button, 0)
+        button_box.Add(convert_button, 0)
         option_box.Add(button_box, 0, wx.EXPAND | wx.LEFT | wx.BOTTOM, 5)
 
         main_box.Add(serial_box, 0, wx.EXPAND | wx.TOP | wx.RIGHT | wx.LEFT, 5)
@@ -117,6 +120,18 @@ class UserInterface(wx.Frame):
 
     def get_calibration_voltage(self):
         return self.calibration_SC.GetValue() / 1000.0
+
+    def on_convert(self, event):
+        dlg = wx.FileDialog(self,
+                            message="Select excel",
+                            wildcard="Excel (*.xls)|*.xls|All files (*.*)|*.*",
+                            defaultDir="D:\\ChargeTest",
+                            style=wx.FD_OPEN
+                            )
+        if dlg.ShowModal() == wx.ID_OK:
+            excel_path = dlg.GetPaths()[0]
+            print excel_path
+        dlg.Destroy()
 
 
 if __name__ == '__main__':

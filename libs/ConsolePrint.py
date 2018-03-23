@@ -56,4 +56,4 @@ def __write(msg):
 def traceback():
     tmp = format_exc()
     if tmp != 'None\n':
-        debug(tmp.strip('\n'))
+        error(tmp.strip('\n'))
