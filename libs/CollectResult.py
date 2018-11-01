@@ -4,6 +4,7 @@ import threading
 from ExcelStyle import ExcelStyle
 from xlwt import Workbook
 from libs import ConsolePrint
+import os
 
 
 class CollectResult(object):
@@ -17,7 +18,7 @@ class CollectResult(object):
 
     def __init_summary_sheet(self):
         self.sheet = self.excel.add_sheet('Summary', True)
-        self.write_row_data(n='#', v=u'电压(V)', a=u'电流(A)', t=u'时间')
+        self.write_row_data(n='#', v=u'电压(mV)', a=u'电流(mA)', t=u'时间')
 
     def write_row_data(self, **kwargs):
         if self.lock.acquire():

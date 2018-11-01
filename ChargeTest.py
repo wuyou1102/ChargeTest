@@ -2,7 +2,7 @@
 __author__ = 'wuyou'
 import sys
 import wx
-from libs.UserInterface import UserInterface
+from libs import UserInterface
 
 reload(sys)
 sys.setdefaultencoding('utf-8')

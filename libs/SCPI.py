@@ -1,6 +1,9 @@
 # -*- encoding:UTF-8 -*-
 import pyvisa
 import ConsolePrint
+import threading
+import time
+
 sys_error = '*ESR?'
 sys_version = 'SYST:VERS?'
 sys_remote = 'SYST:REM'
@@ -18,7 +21,6 @@ ampere_query = 'CURR?'
 def get_serial_source():
     rm = pyvisa.ResourceManager()
     return rm.list_resources()
-
 
 
 def param_to_property(*props, **kwprops):
@@ -57,7 +59,24 @@ class SerialInstrument(object):
     def __init__(self, port):
         self.__port = port
         self.__session = None
+        self.lock = threading.Lock()
+        self.inst_name = 'TDS2024C'
+        self.__switch_command = {
+            "MDO3104": {
+                'Source': 'MEASUrement:IMMed:SOUrce CH%s',
+                'Value': 'MEASUrement:IMMed:VALue?',
+            },
+            "TDS2024C": {
+                'Source': 'MEASUrement:IMMed:SOUrce CH%s',
+                'Value': 'MEASUrement:IMMed:VALue?',
+            }
+        }
         self.__init_session()
+
+    def get_channel_value(self, channel):
+        cmd = self.__switch_command[self.inst_name]
+        self._send_command(cmd['Source'] % channel)
+        return self._send_command(cmd['Value'])
 
     @property
     def power(self):
@@ -117,31 +136,41 @@ class SerialInstrument(object):
         return port
 
     def __init_session(self):
-        try:
-            rm = pyvisa.ResourceManager()
-            self.__session = rm.open_resource(self.__port)
-            self.__session.timeout = 1000
-        except pyvisa.errors.VisaIOError:
-            self.__session = None
-            ConsolePrint.error('SCPI|Initialization serial instrument failure')
+        rm = pyvisa.ResourceManager()
+        self.__session = rm.open_resource(self.__port)
+        self.__session.timeout = 1000
+        r, string = self._send_command('*IDN?')
+        self.inst_name = "MDO3104" if 'MDO3104' in string else "TDS2024C"
+        self._send_command("MEASUrement:IMMed:TYP MEAN")
+
+    def disconnect(self):
+        if self.__session:
+            self.__session.close()
 
     def _send_command(self, cmd):
-        if self.__session is None:
-            return False, 'Session has not been established'
-        if cmd.endswith('?'):
-            ConsolePrint.debug("SCPI|Query  :%s" % cmd)
-            exec_result = self.__query(cmd)
-
-        else:
-            ConsolePrint.debug("SCPI|Write  :%s" % cmd)
-            exec_result = self.__write(cmd)
-        error_msg = self.__query(sys_error)
-        ConsolePrint.debug("SCPI|Result :%s" % str(exec_result))
-        if error_msg == u'0':
-            return True, exec_result
-        else:
-            ConsolePrint.debug("SCPI|ErrMsg :%s" % str(error_msg))
-            return False, error_msg
+        if self.lock.acquire():
+            try:
+                if self.__session is None:
+                    return False, 'Session has not been established'
+                if cmd.endswith('?'):
+                    ConsolePrint.debug("SCPI|Query  :%s" % cmd)
+                    exec_result = self.__query(cmd)
+                    print exec_result
+                else:
+                    ConsolePrint.debug("SCPI|Write  :%s" % cmd)
+                    exec_result = self.__write(cmd)
+                error_msg = self.__query(sys_error)
+                ConsolePrint.debug("SCPI|Result :%s" % str(exec_result))
+                if error_msg == u'0':
+                    return True, exec_result
+                else:
+                    ConsolePrint.debug("SCPI|ErrMsg :%s" % str(error_msg))
+                    return False, error_msg
+            except pyvisa.errors.InvalidSession:
+                return False, u"The resource might be closed."
+            finally:
+                time.sleep(0.05)
+                self.lock.release()
 
     def __query(self, cmd):
         try:
@@ -154,13 +183,11 @@ class SerialInstrument(object):
 
 
 if __name__ == '__main__':
-    import time
-    print 'd'
     SI = SerialInstrument('USB0::0x0699::0x0408::C013076::INSTR')
     #
     # print SI.voltage.query()
     #
-    # print SI.ampere.query()
+    print SI.ampere.query()
     # for x in range(1000):
     #     print SI._send_command('MEASure:CURRent?')
     # time.sleep(10)
@@ -181,6 +208,3 @@ if __name__ == '__main__':
         print SI._send_command('MEASUrement:IMMed:VALue?')
         SI._send_command('MEASUrement:IMMed:SOUrce CH1')
         print SI._send_command('MEASUrement:IMMed:VALue?')
-
-    # print SI._write('OUTPut 1')
-#

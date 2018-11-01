@@ -1,11 +1,12 @@
 # -*- encoding:UTF-8 -*-
 import sys
 import wx
-from time import sleep
+import MplPanel
 from libs.SCPI import get_serial_source
-from libs import Execution
-
-from libs import ConsolePrint
+from libs.SCPI import SerialInstrument
+from libs import Utility
+import pyvisa
+from libs.ChargeData import ChargeData
 
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -21,121 +22,153 @@ class RedirectText(object):
 
 class UserInterface(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, -1, title="Charge&Discharge V1.5", size=(480, 400))
+        wx.Frame.__init__(self, None, -1, title="充放电自动化测试 Ver.2.0", size=(800, 800))
         self.Center()
-        self.panel = wx.Panel(self, -1)
-        self.execution_thread = None
-        main_box = wx.BoxSizer(wx.VERTICAL)  # 整个界面，水平布局
+        self.panel = UserInterfacePanel(self)
+        self.Bind(wx.EVT_CLOSE, self.on_close)
 
-        message_box = wx.BoxSizer(wx.VERTICAL)
-        self.TC_message = wx.TextCtrl(self.panel, -1, '',
-                                      style=wx.TE_MULTILINE | wx.TE_READONLY | wx.HSCROLL)
-        self.TC_message.SetInsertionPointEnd()
-        self.TC_message.SetFont(wx.Font(9, wx.SWISS, wx.NORMAL, wx.NORMAL, False))
-        redir = RedirectText(self.TC_message)
-        sys.stdout = redir
-        message_box.Add(self.TC_message, 1, wx.EXPAND)
-        serial_box = wx.BoxSizer(wx.HORIZONTAL)
-        serial_title = wx.StaticText(self.panel, -1, label='Port:')
-        self.serial_choice = wx.Choice(self.panel, -1, choices=get_serial_source())
+    def on_close(self, event):
+        self.panel.close()
+        event.Skip()
 
-        calibration_title = wx.StaticText(self.panel, -1, label='电压校准 (mV):')
-        self.calibration_SC = wx.SpinCtrl(self.panel, id=-1, size=(80, -1), style=wx.SP_ARROW_KEYS | wx.SP_BORDER,
-                                          min=-1000, max=1000,
-                                          initial=0)
 
-        serial_box.Add(serial_title, 0, wx.TOP, 3)
-        serial_box.Add(self.serial_choice, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
-        serial_box.Add(calibration_title, 0, wx.TOP | wx.LEFT, 3)
-        serial_box.Add(self.calibration_SC, 0, wx.LEFT, 5)
-        option_box = wx.BoxSizer(wx.HORIZONTAL)
-        interval_title = wx.StaticText(self.panel, -1, label='间隔:')
-        self.interval_slider = wx.Slider(self.panel, -1, minValue=1, maxValue=300, style=wx.SL_LABELS)
-        self.interval_slider.SetValue(10)
-        option_box.Add(interval_title, 0, wx.ALIGN_CENTER_VERTICAL)
-        option_box.Add(self.interval_slider, 1, wx.EXPAND | wx.LEFT | wx.BOTTOM, 5)
-        button_box = wx.BoxSizer(wx.HORIZONTAL)
-        start_button = wx.Button(self.panel, -1, 'Start', size=(50, 50))
-        self.Bind(wx.EVT_BUTTON, self.on_start, start_button)
-        stop_button = wx.Button(self.panel, -1, 'Stop', size=(50, 50))
-        self.Bind(wx.EVT_BUTTON, self.on_stop, stop_button)
-        # convert_button = wx.Button(self.panel, -1, 'Convert', size=(55, 50))
-        # self.Bind(wx.EVT_BUTTON, self.on_convert, convert_button)
-        button_box.Add(start_button, 0)
-        button_box.Add(stop_button, 0)
-        #button_box.Add(convert_button, 0)
-        option_box.Add(button_box, 0, wx.EXPAND | wx.LEFT | wx.BOTTOM, 5)
+class UserInterfacePanel(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent, id=wx.ID_ANY, pos=wx.DefaultPosition, size=wx.DefaultSize,
+                          style=wx.TAB_TRAVERSAL)
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        port_sizer = self.__init_port_sizer()
+        spin_sizer = self.__init_spin_sizer()
+        self.ampe = MplPanel.AmpereMpl(self)
+        self.volt = MplPanel.VoltageMpl(self)
+        setting_sizer = self.__init_mpl_setting_sizer()
+        self.instrumentation = None
+        self.data = None
+        main_sizer.Add(port_sizer, 0, wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, 5)
+        main_sizer.Add(spin_sizer, 0, wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, 5)
+        main_sizer.Add(setting_sizer, 0, wx.EXPAND | wx.ALL, 5)
+        main_sizer.Add(wx.StaticLine(self, style=wx.HORIZONTAL), 0, wx.EXPAND | wx.ALL, 5)
+        main_sizer.Add(self.volt, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+        main_sizer.Add(self.ampe, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+        main_sizer.Add(wx.StaticLine(self, style=wx.HORIZONTAL), 0, wx.EXPAND | wx.ALL, 5)
+        self.SetSizer(main_sizer)
+        self.Layout()
 
-        main_box.Add(serial_box, 0, wx.EXPAND | wx.TOP | wx.RIGHT | wx.LEFT, 5)
-        main_box.Add(option_box, 0, wx.EXPAND | wx.TOP | wx.RIGHT | wx.LEFT, 5)
-        main_box.Add(message_box, 1, wx.EXPAND | wx.TOP | wx.RIGHT | wx.LEFT | wx.BOTTOM, 5)
-        self.panel.SetSizer(main_box)
-        self.__control_sharing()
+    def __init_port_sizer(self):
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        title = wx.StaticText(self, wx.ID_ANY, label=u'仪器端口:', style=wx.TEXT_ALIGNMENT_CENTER)
+        self.port_choice = wx.Choice(self, wx.ID_ANY, choices=get_serial_source())
+        refresh = wx.Button(self, wx.ID_ANY, u"刷新", size=(50, -1))
+        connect = wx.Button(self, wx.ID_ANY, u"连接", size=(50, -1))
+        refresh.Bind(wx.EVT_BUTTON, self.on_refresh)
+        connect.Bind(wx.EVT_BUTTON, self.on_connect)
+        sizer.Add(title, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(self.port_choice, 1, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(connect, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(refresh, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        return sizer
 
-    def __control_sharing(self):
-        def msg_output(msg):
-            sleep(0.01)
-            wx.CallAfter(self.TC_message.AppendText, msg)
+    def __init_mpl_setting_sizer(self):
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        v_setting_sizer = self.volt.init_ybound_set_sizer(self)
+        a_setting_sizer = self.ampe.init_ybound_set_sizer(self)
 
-        def disable():
-            self.calibration_SC.Disable()
-            self.serial_choice.Disable()
-            self.interval_slider.Disable()
+        self.ampe.set_ybound(0, 2000)
+        self.volt.set_ybound(3500, 4500)
+        sizer.Add(v_setting_sizer, 0, wx.ALL, 0)
+        sizer.Add(wx.StaticLine(self, style=wx.LI_VERTICAL), 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(a_setting_sizer, 0, wx.ALL, 0)
+        return sizer
 
-        def enable():
-            self.calibration_SC.Enable()
-            self.serial_choice.Enable()
-            self.interval_slider.Enable()
+    def on_refresh(self, event):
+        choices = get_serial_source()
+        self.port_choice.Items = choices
 
-        ConsolePrint.msg_output = msg_output
-        Execution.disable = disable
-        Execution.enable = enable
+    def on_connect(self, event):
+        obj = event.GetEventObject()
+        state = obj.GetLabel()
+        if state == u"连接":
+            port = self.port_choice.GetStringSelection()
+            if not port:
+                return False
+            try:
+                self.instrumentation = SerialInstrument(port)
+                self.port_choice.Disable()
+                obj.SetLabel(u"断开")
+            except pyvisa.errors.VisaIOError:
+                Utility.AlertError(u"连接失败")
+        else:
+            if self.instrumentation:
+                self.instrumentation.disconnect()
+                self.instrumentation = None
+            self.port_choice.Enable()
+            obj.SetLabel(u"连接")
+
+    def __init_spin_ctrl(self, name, min_value, max_value, initial_value, unit):
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        title = wx.StaticText(self, wx.ID_ANY, label=name, style=wx.TEXT_ALIGNMENT_CENTER)
+        spin_ctrl = wx.SpinCtrl(self, wx.ID_ANY, size=(70, -1), style=wx.SP_ARROW_KEYS | wx.SP_BORDER, min=min_value,
+                                max=max_value,
+                                initial=initial_value)
+        unit = wx.StaticText(self, wx.ID_ANY, label=u"(%s)" % unit, style=wx.TEXT_ALIGNMENT_CENTER)
+        sizer.Add(title, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(spin_ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(unit, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        return sizer, spin_ctrl
+
+    def __init_spin_sizer(self):
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        interval_sizer, self.interval_spin = self.__init_spin_ctrl(name=u"取样间隔:", min_value=1, max_value=300,
+                                                                   initial_value=1, unit=u"秒")
+        v_calibration_sizer, self.v_calibration_spin = self.__init_spin_ctrl(name=u"电压校准", min_value=-1000,
+                                                                             max_value=1000,
+                                                                             initial_value=0, unit=u"mV")
+        a_calibration_sizer, self.a_calibration_spin = self.__init_spin_ctrl(name=u"电流校准", min_value=-1000,
+                                                                             max_value=1000,
+                                                                             initial_value=0, unit=u"mA")
+        sizer.Add(v_calibration_sizer, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(wx.StaticLine(self, style=wx.LI_VERTICAL), 0, wx.EXPAND | wx.ALL, 7)
+        sizer.Add(a_calibration_sizer, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        sizer.Add(wx.StaticLine(self, style=wx.LI_VERTICAL), 0, wx.EXPAND | wx.ALL, 7)
+        sizer.Add(interval_sizer, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 1)
+        self.start_button = wx.Button(self, wx.ID_ANY, u"开始", size=(50, -1))
+        self.stop_button = wx.Button(self, wx.ID_ANY, u"停止", size=(50, -1))
+        self.start_button.Bind(wx.EVT_BUTTON, self.on_start)
+        self.stop_button.Bind(wx.EVT_BUTTON, self.on_stop)
+        sizer.Add(self.start_button, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT | wx.ALL, 1)
+        sizer.Add(self.stop_button, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALIGN_RIGHT | wx.ALL, 1)
+        return sizer
 
     def on_start(self, event):
-        if self.execution_thread is None or not self.execution_thread.isAlive():
-            port = self.get_select_port()
-            s_t = self.get_sleep_time()
-            c_v = self.get_calibration_voltage()
-            self.execution_thread = Execution.Execution(port=port, sleep_time=s_t, calibration=c_v)
-            self.execution_thread.setDaemon(True)
-            self.execution_thread.start()
+        if self.instrumentation:
+            interval = self.interval_spin.GetValue()
+            v_cali = self.v_calibration_spin.GetValue()
+            a_cali = self.a_calibration_spin.GetValue()
+            self.data = ChargeData(interval=interval, instr=self.instrumentation, v_cali=v_cali, a_cali=a_cali)
+            self.ampe.start(interval=interval, data=self.data)
+            self.volt.start(interval=interval, data=self.data)
+            self.EnableCtrl(enable=False)
         else:
-            ConsolePrint.warm("已经有一个正在执行的测试。")
+            Utility.AlertError(u"请先连接设备")
 
     def on_stop(self, event):
-        if self.execution_thread is None:
-            ConsolePrint.warm("没有发现需要停止的测试。")
-            return False
-        if self.execution_thread.isAlive():
-            ConsolePrint.warm("正在停止测试，请耐心等待。")
-            self.execution_thread.stop()
-        else:
-            ConsolePrint.warm("没有发现需要停止的测试。")
+        try:
+            self.data.stop()
+            self.ampe.stop()
+            self.volt.stop()
+            Utility.AlertMsg(u"已停止")
+            self.EnableCtrl(enable=True)
+        except AttributeError:
+            pass
 
-    def get_select_port(self):
-        return self.serial_choice.GetStringSelection()
+    def EnableCtrl(self, enable=True):
+        disable = not enable
+        self.start_button.Enable(enable)
+        self.stop_button.Enable(disable)
+        self.v_calibration_spin.Enable(enable)
+        self.a_calibration_spin.Enable(enable)
+        self.interval_spin.Enable(enable)
 
-    def get_sleep_time(self):
-        return self.interval_slider.GetValue()
-
-    def get_calibration_voltage(self):
-        return self.calibration_SC.GetValue() / 1000.0
-
-    def on_convert(self, event):
-        dlg = wx.FileDialog(self,
-                            message="Select excel",
-                            wildcard="Excel (*.xls)|*.xls|All files (*.*)|*.*",
-                            defaultDir="D:\\ChargeTest",
-                            style=wx.FD_OPEN
-                            )
-        if dlg.ShowModal() == wx.ID_OK:
-            excel_path = dlg.GetPaths()[0]
-            print excel_path
-        dlg.Destroy()
-
-
-if __name__ == '__main__':
-    app = wx.App()
-    f = UserInterface()
-    f.Show()
-    app.MainLoop()
+    def close(self):
+        if self.instrumentation:
+            self.instrumentation.disconnect()
