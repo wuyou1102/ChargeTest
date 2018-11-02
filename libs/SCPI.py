@@ -169,7 +169,7 @@ class SerialInstrument(object):
             except pyvisa.errors.InvalidSession:
                 return False, u"The resource might be closed."
             finally:
-                time.sleep(0.1)
+                time.sleep(0.05)
                 self.lock.release()
 
     def __query(self, cmd):

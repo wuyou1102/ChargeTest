@@ -35,7 +35,7 @@ class ChargeData(object):
                                         t=TimeFormat.test_timestamp())
             self.__ampere.append(a)
             self.__voltage.append(v)
-            time.sleep(self.interval - 0.4)
+            time.sleep(self.interval - 0.2)
 
     def stop(self):
         self.__stop = False
