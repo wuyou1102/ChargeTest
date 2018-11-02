@@ -35,7 +35,7 @@ class ChargeData(object):
                                         t=TimeFormat.test_timestamp())
             self.__ampere.append(a)
             self.__voltage.append(v)
-            time.sleep(self.interval)
+            time.sleep(self.interval - 0.4)
 
     def stop(self):
         self.__stop = False
@@ -52,6 +52,7 @@ class ChargeData(object):
             # result, a = self.instr._send_command('MEASUrement:IMMed:VALue?')
             # result, a = self.instr._send_command('MEASU:IMMed:SOU CH4:VALue?')
             result, a = self.instr.get_channel_value(4)
+            print a
             a = float(a) * 1000
             return int(a + self.a_cali)
         except ValueError:
@@ -61,7 +62,7 @@ class ChargeData(object):
             return -1
         except VI_ERROR_SYSTEM_ERROR:
             ConsolePrint.traceback()
-            return -1
+            return -2
 
     def __query_voltage(self):
         try:
@@ -78,4 +79,4 @@ class ChargeData(object):
             return -1
         except VI_ERROR_SYSTEM_ERROR:
             ConsolePrint.traceback()
-            return -1
+            return -2
