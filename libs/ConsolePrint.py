@@ -34,10 +34,10 @@ def error(msg):
 
 
 def debug(msg):
-    pass
-    # msg = TimeFormat.timestamp() + ' DEBUG: ' + str(msg)
-    #__print(msg)
-    # __write(msg)
+    # pass
+    msg = TimeFormat.debug_timestamp() + ' DEBUG: ' + str(msg)
+    __print(msg)
+    __write(msg)
 
 
 def result(msg):

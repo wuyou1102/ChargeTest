@@ -52,13 +52,9 @@ class ChargeData(object):
             # result, a = self.instr._send_command('MEASUrement:IMMed:VALue?')
             # result, a = self.instr._send_command('MEASU:IMMed:SOU CH4:VALue?')
             result, a = self.instr.get_channel_value(4)
-            print a
             a = float(a) * 1000
             return int(a + self.a_cali)
         except ValueError:
-            ConsolePrint.traceback()
-            ConsolePrint.error(result)
-            ConsolePrint.error(a)
             return -1
         except VI_ERROR_SYSTEM_ERROR:
             ConsolePrint.traceback()
@@ -69,13 +65,9 @@ class ChargeData(object):
             # self.instr._send_command('MEASUrement:IMMed:SOUrce CH1')
             # result, v = self.instr._send_command('MEASUrement:IMMed:VALue?')
             result, v = self.instr.get_channel_value(1)
-            print v
             v = float(v) * 1000
             return int(v + self.v_cali)
         except ValueError:
-            ConsolePrint.traceback()
-            ConsolePrint.error(result)
-            ConsolePrint.error(v)
             return -1
         except VI_ERROR_SYSTEM_ERROR:
             ConsolePrint.traceback()

@@ -138,7 +138,7 @@ class SerialInstrument(object):
     def __init_session(self):
         rm = pyvisa.ResourceManager()
         self.__session = rm.open_resource(self.__port)
-        self.__session.timeout = 1000
+        self.__session.timeout = 2000
         r, string = self._send_command('*IDN?')
         self.inst_name = "MDO3104" if 'MDO3104' in string else "TDS2024C"
         self._send_command("MEASUrement:IMMed:TYP MEAN")
@@ -152,20 +152,12 @@ class SerialInstrument(object):
             try:
                 if self.__session is None:
                     return False, 'Session has not been established'
-                if cmd.endswith('?'):
-                    ConsolePrint.debug("SCPI|Query  :%s" % cmd)
-                    exec_result = self.__query(cmd)
-                    print exec_result
-                else:
-                    ConsolePrint.debug("SCPI|Write  :%s" % cmd)
-                    exec_result = self.__write(cmd)
-                error_msg = self.__query(sys_error)
+                exec_result = self.__query(cmd) if cmd.endswith('?') else self.__write(cmd)
                 ConsolePrint.debug("SCPI|Result :%s" % str(exec_result))
-                if error_msg == u'0':
-                    return True, exec_result
-                else:
-                    ConsolePrint.debug("SCPI|ErrMsg :%s" % str(error_msg))
-                    return False, error_msg
+                return True, exec_result
+            except pyvisa.errors.VisaIOError as e:
+                ConsolePrint.traceback()
+                return False, e.message
             except pyvisa.errors.InvalidSession:
                 return False, u"The resource might be closed."
             finally:
@@ -173,12 +165,11 @@ class SerialInstrument(object):
                 self.lock.release()
 
     def __query(self, cmd):
-        try:
-            return self.__session.query(cmd).strip('\r\n')
-        except pyvisa.errors.VisaIOError:
-            return 'ERROR'
+        ConsolePrint.debug("SCPI|Query  :%s" % cmd)
+        return self.__session.query(cmd).strip('\r\n')
 
     def __write(self, cmd):
+        ConsolePrint.debug("SCPI|Write  :%s" % cmd)
         return self.__session.write(cmd)
 
 
